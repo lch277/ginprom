@@ -1,4 +1,4 @@
-// Package ginprom is a library to instrument a gin server and expose a 
+// Package ginprom is a library to instrument a gin server and expose a
 // /metrics endpoint for Prometheus to scrape, keeping a low cardinality by
 // preserving the path parameters name in the prometheus label
 package ginprom
@@ -34,7 +34,7 @@ type pmapb struct {
 // Prometheus contains the metrics gathered by the instance and its path
 type Prometheus struct {
 	reqCnt               *prometheus.CounterVec
-	reqDur, reqSz, resSz prometheus.Summary
+	reqDur, reqSz, resSz *prometheus.SummaryVec
 
 	MetricsPath string
 	Namespace   string
@@ -148,6 +148,7 @@ func (p *Prometheus) get(handler string) (string, bool) {
 }
 
 func (p *Prometheus) register() {
+	labels := []string{"code", "method", "handler", "host", "path"}
 	p.reqCnt = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: p.Namespace,
@@ -155,37 +156,40 @@ func (p *Prometheus) register() {
 			Name:      "requests_total",
 			Help:      "How many HTTP requests processed, partitioned by status code and HTTP method.",
 		},
-		[]string{"code", "method", "handler", "host", "path"},
+		labels,
 	)
 	prometheus.MustRegister(p.reqCnt)
 
-	p.reqDur = prometheus.NewSummary(
+	p.reqDur = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace: p.Namespace,
 			Subsystem: p.Subsystem,
-			Name:      "request_duration_seconds",
-			Help:      "The HTTP request latencies in seconds.",
+			Name:      "request_duration_milliseconds",
+			Help:      "The HTTP request latencies in milliseconds.",
 		},
+		labels,
 	)
 	prometheus.MustRegister(p.reqDur)
 
-	p.reqSz = prometheus.NewSummary(
+	p.reqSz = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace: p.Namespace,
 			Subsystem: p.Subsystem,
 			Name:      "request_size_bytes",
 			Help:      "The HTTP request sizes in bytes.",
 		},
+		labels,
 	)
 	prometheus.MustRegister(p.reqSz)
 
-	p.resSz = prometheus.NewSummary(
+	p.resSz = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace: p.Namespace,
 			Subsystem: p.Subsystem,
 			Name:      "response_size_bytes",
 			Help:      "The HTTP response sizes in bytes.",
 		},
+		labels,
 	)
 	prometheus.MustRegister(p.resSz)
 }
@@ -215,13 +219,13 @@ func (p *Prometheus) Instrument() gin.HandlerFunc {
 		c.Next()
 
 		status := strconv.Itoa(c.Writer.Status())
-		elapsed := float64(time.Since(start)) / float64(time.Second)
+		elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 		resSz := float64(c.Writer.Size())
 
-		p.reqDur.Observe(elapsed)
+		p.reqDur.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Observe(elapsed)
 		p.reqCnt.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Inc()
-		p.reqSz.Observe(float64(reqSz))
-		p.resSz.Observe(resSz)
+		p.reqSz.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Observe(float64(reqSz))
+		p.resSz.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Observe(resSz)
 	}
 }
 
