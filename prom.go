@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -148,7 +149,7 @@ func (p *Prometheus) get(handler string) (string, bool) {
 }
 
 func (p *Prometheus) register() {
-	labels := []string{"code", "method", "handler", "host", "path"}
+	labels := []string{"code", "method" /*"handler",*/, "host", "path"}
 	p.reqCnt = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: p.Namespace,
@@ -222,10 +223,11 @@ func (p *Prometheus) Instrument() gin.HandlerFunc {
 		elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 		resSz := float64(c.Writer.Size())
 
-		p.reqDur.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Observe(elapsed)
-		p.reqCnt.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Inc()
-		p.reqSz.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Observe(float64(reqSz))
-		p.resSz.WithLabelValues(status, c.Request.Method, c.HandlerName(), c.Request.Host, path).Observe(resSz)
+		host := strings.ToLower(c.Request.Host)
+		p.reqDur.WithLabelValues(status, c.Request.Method /*c.HandlerName(),*/, host, path).Observe(elapsed)
+		p.reqCnt.WithLabelValues(status, c.Request.Method /*c.HandlerName(),*/, host, path).Inc()
+		p.reqSz.WithLabelValues(status, c.Request.Method /*c.HandlerName(),*/, host, path).Observe(float64(reqSz))
+		p.resSz.WithLabelValues(status, c.Request.Method /*c.HandlerName(),*/, host, path).Observe(resSz)
 	}
 }
 
